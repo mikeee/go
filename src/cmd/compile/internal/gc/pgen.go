@@ -258,17 +258,15 @@ func compile(fn *Node) {
 	// be types of stack objects. We need to do this here
 	// because symbols must be allocated before the parallel
 	// phase of the compiler.
-	if fn.Func.lsym != nil { // not func _(){}
-		for _, n := range fn.Func.Dcl {
-			switch n.Class() {
-			case PPARAM, PPARAMOUT, PAUTO:
-				if livenessShouldTrack(n) && n.Addrtaken() {
-					dtypesym(n.Type)
-					// Also make sure we allocate a linker symbol
-					// for the stack object data, for the same reason.
-					if fn.Func.lsym.Func.StackObjects == nil {
-						fn.Func.lsym.Func.StackObjects = lookup(fmt.Sprintf("%s.stkobj", fn.funcname())).Linksym()
-					}
+	for _, n := range fn.Func.Dcl {
+		switch n.Class() {
+		case PPARAM, PPARAMOUT, PAUTO:
+			if livenessShouldTrack(n) && n.Addrtaken() {
+				dtypesym(n.Type)
+				// Also make sure we allocate a linker symbol
+				// for the stack object data, for the same reason.
+				if fn.Func.lsym.Func.StackObjects == nil {
+					fn.Func.lsym.Func.StackObjects = lookup(fmt.Sprintf("%s.stkobj", fn.funcname())).Linksym()
 				}
 			}
 		}
@@ -555,11 +553,9 @@ func createDwarfVars(fnsym *obj.LSym, fn *Func, automDecls []*Node) ([]*Node, []
 		decls, vars, selected = createSimpleVars(automDecls)
 	}
 
-	var dcl []*Node
+	dcl := automDecls
 	if fnsym.WasInlined() {
 		dcl = preInliningDcls(fnsym)
-	} else {
-		dcl = automDecls
 	}
 
 	// If optimization is enabled, the list above will typically be
@@ -597,8 +593,22 @@ func createDwarfVars(fnsym *obj.LSym, fn *Func, automDecls []*Node) ([]*Node, []
 		typename := dwarf.InfoPrefix + typesymname(n.Type)
 		decls = append(decls, n)
 		abbrev := dwarf.DW_ABRV_AUTO_LOCLIST
+		isReturnValue := (n.Class() == PPARAMOUT)
 		if n.Class() == PPARAM || n.Class() == PPARAMOUT {
 			abbrev = dwarf.DW_ABRV_PARAM_LOCLIST
+		} else if n.Class() == PAUTOHEAP {
+			// If dcl in question has been promoted to heap, do a bit
+			// of extra work to recover original class (auto or param);
+			// see issue 30908. This insures that we get the proper
+			// signature in the abstract function DIE, but leaves a
+			// misleading location for the param (we want pointer-to-heap
+			// and not stack).
+			// TODO(thanm): generate a better location expression
+			stackcopy := n.Name.Param.Stackcopy
+			if stackcopy != nil && (stackcopy.Class() == PPARAM || stackcopy.Class() == PPARAMOUT) {
+				abbrev = dwarf.DW_ABRV_PARAM_LOCLIST
+				isReturnValue = (stackcopy.Class() == PPARAMOUT)
+			}
 		}
 		inlIndex := 0
 		if genDwarfInline > 1 {
@@ -612,7 +622,7 @@ func createDwarfVars(fnsym *obj.LSym, fn *Func, automDecls []*Node) ([]*Node, []
 		declpos := Ctxt.InnermostPos(n.Pos)
 		vars = append(vars, &dwarf.Var{
 			Name:          n.Sym.Name,
-			IsReturnValue: n.Class() == PPARAMOUT,
+			IsReturnValue: isReturnValue,
 			Abbrev:        abbrev,
 			StackOffset:   int32(n.Xoffset),
 			Type:          Ctxt.Lookup(typename),

@@ -269,7 +269,7 @@ func f11b(a []int, i int) {
 
 func f11c(a []int, i int) {
 	useSlice(a[:i])
-	useSlice(a[:i]) // ERROR "Proved Geq64$" "Proved IsSliceInBounds$"
+	useSlice(a[:i]) // ERROR "Proved IsSliceInBounds$"
 }
 
 func f11d(a []int, i int) {
@@ -469,7 +469,7 @@ func f17(b []int) {
 		// using the derived relation between len and cap.
 		// This depends on finding the contradiction, since we
 		// don't query this condition directly.
-		useSlice(b[:i]) // ERROR "Proved Geq64$" "Proved IsSliceInBounds$"
+		useSlice(b[:i]) // ERROR "Proved IsSliceInBounds$"
 	}
 }
 
@@ -703,6 +703,26 @@ func range2(b [][32]int) {
 		if i >= 0 { // ERROR "Proved Geq64$"
 			println("x")
 		}
+	}
+}
+
+// signhint1-2 test whether the hint (int >= 0) is propagated into the loop.
+func signHint1(i int, data []byte) {
+	if i >= 0 {
+		for i < len(data) { // ERROR "Induction variable: limits \[\?,\?\), increment 1$"
+			_ = data[i] // ERROR "Proved IsInBounds$"
+			i++
+		}
+	}
+}
+
+func signHint2(b []byte, n int) {
+	if n < 0 {
+		panic("")
+	}
+	_ = b[25]
+	for i := n; i <= 25; i++ { // ERROR "Induction variable: limits \[\?,25\], increment 1$"
+		b[i] = 123 // ERROR "Proved IsInBounds$"
 	}
 }
 

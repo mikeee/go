@@ -375,7 +375,7 @@ func methods(t *types.Type) []*Sig {
 	// generating code if necessary.
 	var ms []*Sig
 	for _, f := range mt.AllMethods().Slice() {
-		if f.Type.Etype != TFUNC || f.Type.Recv() == nil {
+		if !f.IsMethod() {
 			Fatalf("non-method on %v method %v %v\n", mt, f.Sym, f)
 		}
 		if f.Type.Recv() == nil {
@@ -477,12 +477,10 @@ func dimportpath(p *types.Pkg) {
 		return
 	}
 
-	var str string
+	str := p.Path
 	if p == localpkg {
 		// Note: myimportpath != "", or else dgopkgpath won't call dimportpath.
 		str = myimportpath
-	} else {
-		str = p.Path
 	}
 
 	s := Ctxt.Lookup("type..importpath." + p.Prefix + ".")
@@ -884,9 +882,6 @@ func dcommontype(lsym *obj.LSym, t *types.Type) int {
 	ot = duint8(lsym, ot, t.Align) // fieldAlign
 
 	i = kinds[t.Etype]
-	if !types.Haspointers(t) {
-		i |= objabi.KindNoPointers
-	}
 	if isdirectiface(t) {
 		i |= objabi.KindDirectIface
 	}
